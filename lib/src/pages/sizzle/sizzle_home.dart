@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:blt/src/pages/sizzle/sizzle_state_provider.dart';
 import 'package:blt/src/pages/sizzle/sizzle_timer.dart';
+import 'package:blt/src/services/activity_tracker.dart';
 import 'dart:async';
 import 'package:awesome_notifications/awesome_notifications.dart'; //Added for awesome notifications
 import 'package:local_notifier/local_notifier.dart';
@@ -23,6 +24,7 @@ class _SizzleHomeState extends ConsumerState<SizzleHome>
   String apiBaseUrl = GeneralEndPoints
       .apiBaseUrl; // Updated to use the correct apiBaseUrl variable
   Timer? _timer; //Added for managing the timer
+  final ActivityTracker _activityTracker = ActivityTracker(); // Activity tracker instance
 
   @override
   void initState() {
@@ -38,13 +40,36 @@ class _SizzleHomeState extends ConsumerState<SizzleHome>
   }
 
   @override
-  void dispose() async {
+  void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _cancelTimer(); //Cancel the timer when disposing
     if (isTimerRunning) {
-      await stopTimer(); // Await the stopTimer to ensure the request completes before disposing
+      stopTimer().ignore(); // Fire-and-forget stop timer
     }
+    _activityTracker.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        if (isTimerRunning) {
+          _activityTracker.stopTracking().ignore();
+        }
+        break;
+      case AppLifecycleState.resumed:
+        if (isTimerRunning) {
+          _activityTracker.startTracking();
+        }
+        break;
+      case AppLifecycleState.detached:
+        break;
+    }
   }
 
   void _initializeNotifications() {
@@ -173,21 +198,24 @@ class _SizzleHomeState extends ConsumerState<SizzleHome>
               : Text('Welcome $username'),
         ),
         body: isTimerRunning
-            ? Center(
-                child: Container(
-                  color: theme
-                      .scaffoldBackgroundColor, // Set the background color to match the theme
-                  alignment: Alignment.center,
-                  child: Text(
-                    'Sizzle is running. Click on stop to continue.',
-                    style: TextStyle(
-                      fontSize: 20, // Increase the font size
-                      fontWeight: FontWeight.bold, // Make the text bold
-                      color: isDarkMode
-                          ? Colors.white
-                          : Colors.black, // Adjust text color based on theme
+            ? ActivityTrackerListener(
+                tracker: _activityTracker,
+                child: Center(
+                  child: Container(
+                    color: theme
+                        .scaffoldBackgroundColor, // Set the background color to match the theme
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Sizzle is running. Click on stop to continue.',
+                      style: TextStyle(
+                        fontSize: 20, // Increase the font size
+                        fontWeight: FontWeight.bold, // Make the text bold
+                        color: isDarkMode
+                            ? Colors.white
+                            : Colors.black, // Adjust text color based on theme
+                      ),
+                      textAlign: TextAlign.center, // Center the text
                     ),
-                    textAlign: TextAlign.center, // Center the text
                   ),
                 ),
               )
@@ -295,6 +323,11 @@ class _SizzleHomeState extends ConsumerState<SizzleHome>
               true; // Update the state to indicate the timer is running
           _startCountdownTimer(); //Start the countdown for 5 minutes
         });
+        try {
+          _activityTracker.startTracking(); // Start activity tracking when timer starts
+        } catch (e) {
+          debugPrint('Failed to start activity tracking: $e');
+        }
       }
     } else {
       // Added error handling for failed timer start
@@ -333,6 +366,12 @@ class _SizzleHomeState extends ConsumerState<SizzleHome>
     );
 
     if (response.statusCode == 200) {
+      try {
+        await _activityTracker.stopTracking(); // Stop activity tracking when timer stops
+      } catch (e) {
+        debugPrint('Failed to stop activity tracking: $e');
+      }
+
       if (mounted) {
         setState(() {
           isTimerRunning =
