@@ -9,7 +9,7 @@ import 'package:awesome_notifications/awesome_notifications.dart'; //Added for a
 import 'package:local_notifier/local_notifier.dart';
 
 class SizzleHome extends ConsumerStatefulWidget {
-  const SizzleHome({Key? key}) : super(key: key);
+  const SizzleHome({super.key});
 
   @override
   _SizzleHomeState createState() => _SizzleHomeState();
@@ -43,13 +43,6 @@ class _SizzleHomeState extends ConsumerState<SizzleHome>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _cancelTimer(); //Cancel the timer when disposing
-    if (isTimerRunning) {
-      // Synchronously finalize activity logs before disposal
-      // to ensure pending logs are preserved even if async stopTimer
-      // hasn't completed yet.
-      _activityTracker.finalizeForDisposal();
-      stopTimer().ignore(); // Fire-and-forget stop timer
-    }
     _activityTracker.dispose();
     super.dispose();
   }

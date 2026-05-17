@@ -6,13 +6,11 @@ import 'package:http/http.dart' as http;
 import 'package:blt/src/global/variables.dart';
 import 'package:blt/src/util/endpoints/general_endpoints.dart';
 
-/// Enum representing the type of user activity detected.
 enum ActivityType {
   mouse,
   keyboard,
 }
 
-/// Model class representing a single activity log entry.
 class ActivityLog {
   final DateTime startTime;
   DateTime _endTime;
@@ -53,8 +51,6 @@ class ActivityLog {
   }
 }
 
-/// Service class that tracks mouse and keyboard activity while the timer is running
-/// and sends activity logs to the backend API periodically.
 class ActivityTracker {
   static const String _endpoint = 'activity-logs/';
   static const Duration _sendInterval = Duration(minutes: 1);
@@ -70,20 +66,22 @@ class ActivityTracker {
   Timer? _sendTimer;
   Timer? _idleCheckTimer;
   bool _isSending = false;
+  Completer<void>? _sendCompleter;
+  bool _isDisposed = false;
+  bool _isStopping = false;
 
   final List<ActivityLog> _pendingLogs = [];
 
   ActivityLog? _currentMouseActivity;
   ActivityLog? _currentKeyboardActivity;
 
-  /// Returns the time of the last detected activity, or null if none.
   DateTime? get lastActivityTime => _lastActivityTime;
 
-  /// Returns the number of pending logs waiting to be sent.
   int get pendingLogCount => _pendingLogs.length;
 
-  /// Starts tracking user activity.
   void startTracking() {
+    if (_isDisposed) return;
+    if (_isStopping) return;
     if (_isTracking) return;
 
     _isTracking = true;
@@ -94,9 +92,10 @@ class ActivityTracker {
     _idleCheckTimer = Timer.periodic(Duration(seconds: 30), (_) => _checkIdle());
   }
 
-  /// Stops tracking user activity and flushes any pending logs.
   Future<void> stopTracking() async {
-    if (!_isTracking) return;
+    if (_isDisposed) return;
+    if (_isStopping) return;
+    _isStopping = true;
 
     _isTracking = false;
 
@@ -107,16 +106,21 @@ class ActivityTracker {
     _idleCheckTimer = null;
 
     _finalizeCurrentActivities();
+
+    if (_isSending && _sendCompleter != null) {
+      await _sendCompleter!.future;
+    }
+
     await _sendPendingLogs();
+
+    _isStopping = false;
   }
 
-  /// Records a mouse/pointer movement event.
   void recordMouseActivity() {
     if (!_isTracking) return;
 
     final now = DateTime.now();
 
-    // Throttle mouse events to avoid excessive updates
     if (_lastMouseRecord != null &&
         now.difference(_lastMouseRecord!) < _mouseThrottle) {
       return;
@@ -135,7 +139,6 @@ class ActivityTracker {
     }
   }
 
-  /// Records a keyboard input event.
   void recordKeyboardActivity() {
     if (!_isTracking) return;
 
@@ -153,7 +156,6 @@ class ActivityTracker {
     }
   }
 
-  /// Finalizes any ongoing activity sessions and moves them to pending logs.
   void _finalizeCurrentActivities() {
     final now = DateTime.now();
 
@@ -170,7 +172,6 @@ class ActivityTracker {
     }
   }
 
-  /// Checks if the user has been idle for too long and finalizes activities accordingly.
   void _checkIdle() {
     if (!_isTracking || _lastActivityTime == null) return;
 
@@ -180,10 +181,11 @@ class ActivityTracker {
     }
   }
 
-  /// Sends pending activity logs to the backend API.
   Future<void> _sendPendingLogs() async {
+    if (_isDisposed) return;
     if (_isSending) return;
     _isSending = true;
+    _sendCompleter = Completer<void>();
 
     try {
       _finalizeCurrentActivities();
@@ -223,29 +225,23 @@ class ActivityTracker {
       }
     } finally {
       _isSending = false;
+      _sendCompleter?.complete();
+      _sendCompleter = null;
     }
   }
 
-  /// Synchronously finalizes current activities for disposal.
-  /// This ensures pending logs are preserved without awaiting network calls.
-  void finalizeForDisposal() {
-    _isTracking = false;
+  void dispose() {
+    if (_isDisposed) return;
+    _isDisposed = true;
+
     _sendTimer?.cancel();
     _sendTimer = null;
     _idleCheckTimer?.cancel();
     _idleCheckTimer = null;
     _finalizeCurrentActivities();
   }
-
-  /// Disposes resources. Should be called when the tracker is no longer needed.
-  void dispose() {
-    finalizeForDisposal();
-  }
 }
 
-/// A widget that wraps its child and listens for pointer and keyboard events
-/// to track user activity. Should be placed around the area where activity
-/// needs to be monitored.
 class ActivityTrackerListener extends StatefulWidget {
   final ActivityTracker tracker;
   final Widget child;
