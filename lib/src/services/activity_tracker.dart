@@ -35,7 +35,7 @@ class ActivityLog {
   Map<String, dynamic> toJson({String? userId, String? domain}) {
     return {
       'user': userId,
-      'domain': domain ?? 'blt.owasp.org',
+      'domain': domain ?? GeneralEndPoints.baseUrl,
       'start_time': startTime.toUtc().toIso8601String(),
       'end_time': _endTime.toUtc().toIso8601String(),
       'activity_description': _activityDescription,
@@ -199,18 +199,23 @@ class ActivityTracker {
 
       for (final log in logsToSend) {
         try {
-          final response = await http.post(
-            url,
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Token ${currentUser!.token}',
-            },
-            body: json.encode(log.toJson(userId: userId)),
-          );
+          final response = await http
+              .post(
+                url,
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Token ${currentUser!.token}',
+                },
+                body: json.encode(log.toJson(userId: userId)),
+              )
+              .timeout(const Duration(seconds: 10));
 
           if (response.statusCode != 201 && response.statusCode != 200) {
             _pendingLogs.add(log);
           }
+        } on TimeoutException {
+          debugPrint('Activity log send timed out');
+          _pendingLogs.add(log);
         } catch (e, stackTrace) {
           debugPrint('Failed to send activity log: $e\n$stackTrace');
           _pendingLogs.add(log);
@@ -221,12 +226,20 @@ class ActivityTracker {
     }
   }
 
-  /// Disposes resources. Should be called when the tracker is no longer needed.
-  void dispose() {
+  /// Synchronously finalizes current activities for disposal.
+  /// This ensures pending logs are preserved without awaiting network calls.
+  void finalizeForDisposal() {
     _isTracking = false;
     _sendTimer?.cancel();
+    _sendTimer = null;
     _idleCheckTimer?.cancel();
+    _idleCheckTimer = null;
     _finalizeCurrentActivities();
+  }
+
+  /// Disposes resources. Should be called when the tracker is no longer needed.
+  void dispose() {
+    finalizeForDisposal();
   }
 }
 

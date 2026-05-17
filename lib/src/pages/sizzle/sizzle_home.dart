@@ -44,6 +44,10 @@ class _SizzleHomeState extends ConsumerState<SizzleHome>
     WidgetsBinding.instance.removeObserver(this);
     _cancelTimer(); //Cancel the timer when disposing
     if (isTimerRunning) {
+      // Synchronously finalize activity logs before disposal
+      // to ensure pending logs are preserved even if async stopTimer
+      // hasn't completed yet.
+      _activityTracker.finalizeForDisposal();
       stopTimer().ignore(); // Fire-and-forget stop timer
     }
     _activityTracker.dispose();
