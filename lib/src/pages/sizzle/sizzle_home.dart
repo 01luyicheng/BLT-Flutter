@@ -53,11 +53,12 @@ class _SizzleHomeState extends ConsumerState<SizzleHome>
 
     switch (state) {
       case AppLifecycleState.paused:
-      case AppLifecycleState.inactive:
-      case AppLifecycleState.hidden:
         if (isTimerRunning) {
           _activityTracker.stopTracking().ignore();
         }
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
         break;
       case AppLifecycleState.resumed:
         if (isTimerRunning) {
@@ -217,8 +218,7 @@ class _SizzleHomeState extends ConsumerState<SizzleHome>
                 ),
               )
             : FutureBuilder(
-                future: _fetchIssues(
-                    username!), // Updated to call the newly added _fetchIssues method
+                future: username != null ? _fetchIssues(username) : Future.value([]),
                 builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return Center(
