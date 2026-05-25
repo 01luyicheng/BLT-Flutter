@@ -62,7 +62,6 @@ class ActivityTracker {
 
   DateTime? _lastActivityTime;
   DateTime? _lastMouseRecord;
-  DateTime? _sessionStartTime;
   Timer? _sendTimer;
   Timer? _idleCheckTimer;
   bool _isSending = false;
@@ -85,7 +84,6 @@ class ActivityTracker {
     if (_isTracking) return;
 
     _isTracking = true;
-    _sessionStartTime = DateTime.now();
     _lastActivityTime = DateTime.now();
 
     _sendTimer = Timer.periodic(_sendInterval, (_) => _sendPendingLogs());
@@ -239,6 +237,11 @@ class ActivityTracker {
     _idleCheckTimer?.cancel();
     _idleCheckTimer = null;
     _finalizeCurrentActivities();
+
+    if (_sendCompleter != null && !_sendCompleter!.isCompleted) {
+      _sendCompleter!.complete();
+      _sendCompleter = null;
+    }
   }
 }
 
@@ -271,6 +274,7 @@ class _ActivityTrackerListenerState extends State<ActivityTrackerListener> {
     return Listener(
       onPointerMove: (_) => widget.tracker.recordMouseActivity(),
       onPointerDown: (_) => widget.tracker.recordMouseActivity(),
+      onPointerHover: (_) => widget.tracker.recordMouseActivity(),
       child: KeyboardListener(
         focusNode: _focusNode,
         autofocus: true,
